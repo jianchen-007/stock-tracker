@@ -521,7 +521,18 @@
     $('settingsBtn').onclick = function () {
       $('apiUrlInput').value = apiUrl();
       $('testResult').textContent = '';
+      $('copySetupBtn').style.display = apiUrl() ? '' : 'none';
       toggle($('settings'), true);
+    };
+    $('copySetupBtn').onclick = function () {
+      const link = location.origin + location.pathname + '?api=' + encodeURIComponent(apiUrl());
+      navigator.clipboard.writeText(link).then(function () {
+        $('testResult').textContent = '✓ Setup link copied — open it once on the new device.';
+        $('testResult').style.color = 'var(--green)';
+      }, function () {
+        $('testResult').textContent = '✗ Could not copy — copy the URL field manually.';
+        $('testResult').style.color = 'var(--red)';
+      });
     };
     $('settingsClose').onclick = () => toggle($('settings'), false);
     $('detailClose').onclick = () => toggle($('detail'), false);
