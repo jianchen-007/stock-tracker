@@ -56,6 +56,19 @@
   /* ---------- backend API ---------- */
 
   const apiUrl = () => localStorage.getItem(LS.api) || '';
+
+  // Accept either a bare Apps Script /exec URL or a full "?api=..." setup
+  // link (as produced by "Copy phone setup link"); returns '' if neither.
+  function normalizeApiInput(text) {
+    text = (text || '').trim();
+    if (text.includes('?api=') || text.includes('&api=')) {
+      try {
+        const v = new URL(text).searchParams.get('api');
+        if (v) text = v;
+      } catch (e) { /* fall through */ }
+    }
+    return /^https:\/\/script\.google\.com\//.test(text) ? text : '';
+  }
   // Effective base: the configured Apps Script URL, else the same-origin /api
   // endpoint that dev-server.py provides (detected once at boot).
   const apiBase = () => apiUrl() || (state.devApi ? 'api' : '');
@@ -146,10 +159,7 @@
           try { state.holdings = await loadCsvFallback(); } catch (e) { /* nothing */ }
         }
         render();
-        showBanner('No backend configured — showing holdings without live prices. ' +
-          '<a id="bannerSetup">Open Settings</a> to connect your Google Sheet.');
-        const a = $('bannerSetup');
-        if (a) a.onclick = () => toggle($('settings'), true);
+        showSetupBanner('No backend configured — showing holdings without live prices.');
       } else {
         render();
         showBanner('Offline or backend unreachable — showing cached data' +
@@ -196,6 +206,30 @@
     b.classList.remove('hidden');
   }
   function hideBanner() { $('banner').classList.add('hidden'); }
+
+  // Unconfigured-state banner with the two setup actions. "Paste setup link"
+  // is the phone-friendly path (esp. iOS home-screen apps, whose storage is
+  // separate from Safari's): copy the link from a configured device, tap once.
+  function showSetupBanner(message) {
+    showBanner(message + ' <a id="bannerPaste">Paste setup link</a> (copied from a configured device) or ' +
+      '<a id="bannerSetup">open Settings</a>.');
+    $('bannerSetup').onclick = () => toggle($('settings'), true);
+    $('bannerPaste').onclick = async function () {
+      let url = '';
+      try {
+        url = normalizeApiInput(await navigator.clipboard.readText());
+      } catch (err) {
+        showSetupBanner('Couldn\'t read the clipboard — use Settings and paste into the URL field instead.');
+        return;
+      }
+      if (!url) {
+        showSetupBanner('Clipboard doesn\'t hold a setup link. On a configured device use Settings → "Copy phone setup link", send it here, copy it, then retry.');
+        return;
+      }
+      localStorage.setItem(LS.api, url);
+      refresh(true);
+    };
+  }
 
   function groups() {
     const map = new Map();
@@ -541,7 +575,14 @@
     });
 
     $('saveApiBtn').onclick = function () {
-      localStorage.setItem(LS.api, $('apiUrlInput').value.trim());
+      const raw = $('apiUrlInput').value.trim();
+      const url = normalizeApiInput(raw);
+      if (raw && !url) {
+        $('testResult').textContent = '✗ Not a valid backend URL or setup link.';
+        $('testResult').style.color = 'var(--red)';
+        return;
+      }
+      localStorage.setItem(LS.api, url);
       toggle($('settings'), false);
       refresh(true);
     };
@@ -549,7 +590,9 @@
       const el = $('testResult');
       el.textContent = 'Testing…';
       try {
-        const url = $('apiUrlInput').value.trim();
+        const url = normalizeApiInput($('apiUrlInput').value);
+        if (!url) throw new Error('not a valid backend URL or setup link');
+        $('apiUrlInput').value = url;
         const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=ping');
         const j = await res.json();
         el.textContent = j.ok ? '✓ Connected — sheet "' + j.data.sheet + '"' : '✗ ' + j.error;
