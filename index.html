@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101828">
+<title>Stock Tracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="28" height="28">
+    <h1>Stock Tracker</h1>
+  </div>
+  <div class="topbar-right">
+    <span id="syncStatus" class="sync-status">—</span>
+    <button id="refreshBtn" class="icon-btn" title="Refresh now">&#x21bb;</button>
+    <button id="settingsBtn" class="icon-btn" title="Settings">&#9881;</button>
+  </div>
+</header>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <section id="summary" class="summary-cards"></section>
+
+  <section class="table-wrap">
+    <table id="portfolio">
+      <thead>
+        <tr id="portfolioHead">
+          <th class="sym" data-key="symbol">Symbol</th>
+          <th class="num" data-key="qty">Qty</th>
+          <th class="num" data-key="avgCost">Avg Cost $</th>
+          <th class="num" data-key="price">Last Price $</th>
+          <th class="num" data-key="dayGain">Day's Gain $</th>
+          <th class="num" data-key="gain">Total Gain $</th>
+          <th class="num" data-key="gainPct">Gain %</th>
+          <th class="num" data-key="value">Value $</th>
+        </tr>
+      </thead>
+      <tbody id="portfolioBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- Symbol detail overlay -->
+<div id="detail" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-head">
+      <h2 id="detailTitle">—</h2>
+      <div class="range-btns" id="rangeBtns">
+        <button data-range="1mo">1M</button>
+        <button data-range="6mo">6M</button>
+        <button data-range="1y" class="active">1Y</button>
+        <button data-range="5y">5Y</button>
+        <button data-range="max">Max</button>
+      </div>
+      <button class="icon-btn close-btn" id="detailClose">&times;</button>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartCanvas"></canvas>
+      <div id="chartTip" class="chart-tip hidden"></div>
+      <div id="chartMsg" class="chart-msg hidden"></div>
+    </div>
+    <div id="detailLots"></div>
+  </div>
+</div>
+
+<!-- Settings overlay -->
+<div id="settings" class="overlay hidden">
+  <div class="overlay-card narrow">
+    <div class="overlay-head">
+      <h2>Settings</h2>
+      <button class="icon-btn close-btn" id="settingsClose">&times;</button>
+    </div>
+    <label class="field">
+      <span>Apps Script Web-App URL <small>(ends in /exec — see apps-script/Code.gs for setup)</small></span>
+      <input type="url" id="apiUrlInput" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <div class="settings-actions">
+      <button id="testApiBtn" class="btn">Test connection</button>
+      <button id="saveApiBtn" class="btn primary">Save</button>
+    </div>
+    <p id="testResult" class="test-result"></p>
+    <hr>
+    <p class="hint">Quotes auto-refresh every 60&nbsp;s while the app is open. Computed gains are
+    written back to the Google Sheet (columns G–K) at most once every 5 minutes.</p>
+  </div>
+</div>
+
+<script src="chart.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
