@@ -4,7 +4,7 @@
 // holdings.csv is intentionally NOT precached: it only exists in local dev
 // (it is excluded from the public repo) and precache addAll() would fail on
 // hosting where it 404s. The runtime SWR handler still caches it in dev.
-const CACHE = 'stock-tracker-v7';
+const CACHE = 'stock-tracker-v8';
 const SHELL = [
   './',
   'index.html',

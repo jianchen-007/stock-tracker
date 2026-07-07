@@ -344,7 +344,8 @@
         '<td class="sym"><span class="caret">▶</span>' + g.symbol +
         (g.lots.length > 1 ? ' <span class="dim">×' + g.lots.length + '</span>' : '') + '</td>' +
         dayCell(g.dayPct, g.dayGain) +
-        totalCell(g.gainPct, g.gain);
+        totalCell(g.gainPct, g.gain) +
+        '<td class="num">' + fmt(g.value) + '</td>';
       tr.addEventListener('click', function (ev) {
         // caret area toggles lots; anywhere else opens the chart
         if (ev.target.classList.contains('caret')) {
@@ -368,7 +369,8 @@
             '<td class="sym">' + l.dateAcquired + (l.bank ? ' · ' + l.bank : '') +
             ' · ' + fmt(l.qty, l.qty % 1 ? 2 : 0) + ' @ ' + fmt(l.pricePaid) + '</td>' +
             dayCell(g.dayPct, lotDayGain) +
-            totalCell(gain != null && l.totalCost ? gain / l.totalCost * 100 : null, gain);
+            totalCell(gain != null && l.totalCost ? gain / l.totalCost * 100 : null, gain) +
+            '<td class="num">' + fmt(value) + '</td>';
           tb.appendChild(ltr);
         });
       }
