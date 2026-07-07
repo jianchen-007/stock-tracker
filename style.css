@@ -221,6 +221,18 @@ tr.lot td.sym { padding-left: 34px; font-weight: 400; }
 }
 .range-btns button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
+.detail-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 10px 14px;
+  padding: 8px 2px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.stat .val { font-size: 15.5px; font-weight: 650; margin-top: 1px; display: flex; align-items: center; gap: 5px; }
+.stat .sub { font-size: 12px; margin-top: 1px; }
+
 .chart-box { position: relative; }
 #chartCanvas { width: 100%; height: 320px; display: block; }
 .chart-tip {

@@ -440,16 +440,54 @@
 
   async function openDetail(symbol) {
     state.detailSymbol = symbol;
-    if (symbol === PORTFOLIO) {
-      $('detailTitle').textContent = 'Portfolio';
-    } else {
-      $('detailTitle').textContent = symbol +
-        (state.quotes[symbol] && state.quotes[symbol].price != null
-          ? ' — $' + fmt(state.quotes[symbol].price) : '');
-    }
+    $('detailTitle').textContent = symbol === PORTFOLIO ? 'Portfolio' : symbol;
     toggle($('detail'), true);
+    renderDetailStats(symbol);
     renderDetailLots(symbol);
     await loadChart();
+  }
+
+  function renderDetailStats(symbol) {
+    const stat = (label, val, cls, sub) =>
+      '<div class="stat"><div class="label">' + label + '</div>' +
+      '<div class="val ' + (cls || '') + '">' + val + '</div>' +
+      (sub ? '<div class="sub ' + (cls || '') + '">' + sub + '</div>' : '') + '</div>';
+    let items;
+    if (symbol === PORTFOLIO) {
+      const gs = groups();
+      const cost = gs.reduce((s, g) => s + g.cost, 0);
+      const anyValue = gs.some(g => g.value != null);
+      const value = gs.reduce((s, g) => s + (g.value ?? g.cost), 0);
+      const day = gs.reduce((s, g) => s + (g.dayGain || 0), 0);
+      const gain = anyValue ? value - cost : null;
+      items =
+        stat('Value', '$' + fmt(anyValue ? value : null)) +
+        stat('Cost Basis', '$' + fmt(cost)) +
+        stat("Day's Gain", gainTxt(day), signCls(day)) +
+        stat('Total Gain', gain != null ? gainTxt(gain) : '—', signCls(gain),
+          gain != null && cost ? pctTxt(gain / cost * 100) : '') +
+        stat('Positions', gs.length, '', state.holdings.length + ' lots');
+    } else {
+      const g = groups().find(x => x.symbol === symbol);
+      if (!g) { $('detailStats').innerHTML = ''; return; }
+      const q = state.quotes[symbol] || {};
+      const termTxt = { long: 'Long-term', short: 'Short-term', mixed: 'Mixed lots' }[g.term];
+      items =
+        stat('Last Price', g.price != null ? '$' + fmt(g.price) : '—',
+          signCls(g.dayPct), g.dayPct != null ? pctTxt(g.dayPct) + ' today' : '') +
+        stat('Prev Close', q.prevClose != null ? '$' + fmt(q.prevClose) : '—') +
+        stat('Qty', fmt(g.qty, g.qty % 1 ? 2 : 0)) +
+        stat('Avg Cost', g.avgCost != null ? '$' + fmt(g.avgCost) : '—') +
+        stat('Cost Basis', '$' + fmt(g.cost)) +
+        stat('Value', g.value != null ? '$' + fmt(g.value) : '—') +
+        stat("Day's Gain", g.dayGain != null ? gainTxt(g.dayGain) : '—', signCls(g.dayGain),
+          g.dayPct != null ? pctTxt(g.dayPct) : '') +
+        stat('Total Gain', g.gain != null ? gainTxt(g.gain) : '—', signCls(g.gain),
+          g.gainPct != null ? pctTxt(g.gainPct) : '') +
+        stat('Held', '<span class="term-dot ' + (g.term === 'short' ? 'short' : 'long') + '"></span>' + termTxt,
+          '', g.lots.length > 1 ? g.lots.length + ' lots' : '');
+    }
+    $('detailStats').innerHTML = items;
   }
 
   // Fetch (or serve cached) price history for one symbol.
