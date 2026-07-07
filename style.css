@@ -18,6 +18,8 @@
   --red-fill: rgba(180, 35, 24, .18);
   --tip-bg: #101828;
   --tip-ink: #ffffff;
+  --term-long: #2e90fa;
+  --term-short: #f79009;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +43,8 @@
     --red-fill: rgba(240, 113, 106, .16);
     --tip-bg: #e6eaf2;
     --tip-ink: #101828;
+    --term-long: #53a4ff;
+    --term-short: #ffab3d;
   }
   .banner { background: #2a2210; color: #f5c877; border-color: #4a3a12; }
 }
@@ -123,7 +127,42 @@ main { max-width: 1080px; margin: 0 auto; padding: 16px; }
   border-radius: 10px;
   overflow-x: auto;
 }
-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+
+.table-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sort-label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+.table-bar select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.btn.small { padding: 4px 12px; font-size: 13px; margin-left: auto; }
+.term-legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.term-legend span { display: inline-flex; align-items: center; }
+.term-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; margin-right: 5px; }
+.term-dot.long { background: var(--term-long); }
+.term-dot.short { background: var(--term-short); }
+
+/* long/short-term holding stripes on the left edge of each row */
+tr.term-long td:first-child { border-left: 3px solid var(--term-long); }
+tr.term-short td:first-child { border-left: 3px solid var(--term-short); }
+tr.term-mixed td:first-child {
+  border-left: 3px solid;
+  border-image: linear-gradient(var(--term-long) 50%, var(--term-short) 50%) 1;
+}
+
+table { width: 100%; border-collapse: collapse; }
+#portfolio { min-width: 0; }
+#detailLots table { min-width: 560px; }
 th, td { padding: 9px 12px; text-align: right; white-space: nowrap; }
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); border-bottom: 1px solid var(--line); }
 #portfolioHead th { cursor: pointer; user-select: none; }
@@ -203,7 +242,6 @@ tr.lot td.sym { padding-left: 34px; font-weight: 400; }
 }
 
 #detailLots { margin-top: 10px; }
-#detailLots table { min-width: 0; }
 .legend { font-size: 12.5px; color: var(--muted); margin: 6px 2px; }
 .legend .buy-dot { color: var(--accent); }
 

@@ -30,17 +30,30 @@
   <section id="summary" class="summary-cards"></section>
 
   <section class="table-wrap">
+    <div class="table-bar">
+      <label class="sort-label">Sort
+        <select id="sortSel">
+          <option value="mover">Biggest movers today</option>
+          <option value="dayPct">Day gain %</option>
+          <option value="dayGain">Day gain $</option>
+          <option value="gainPct">Total gain %</option>
+          <option value="gain">Total gain $</option>
+          <option value="value">Value</option>
+          <option value="symbol">Symbol A–Z</option>
+        </select>
+      </label>
+      <div class="term-legend">
+        <span><span class="term-dot long"></span>long-term &gt;1 yr</span>
+        <span><span class="term-dot short"></span>short-term</span>
+      </div>
+      <button id="modeToggle" class="btn small" title="Toggle between % and $">Show $</button>
+    </div>
     <table id="portfolio">
       <thead>
         <tr id="portfolioHead">
           <th class="sym" data-key="symbol">Symbol</th>
-          <th class="num" data-key="qty">Qty</th>
-          <th class="num" data-key="avgCost">Avg Cost $</th>
-          <th class="num" data-key="price">Last Price $</th>
-          <th class="num" data-key="dayGain">Day's Gain $</th>
-          <th class="num" data-key="gain">Total Gain $</th>
-          <th class="num" data-key="gainPct">Gain %</th>
-          <th class="num" data-key="value">Value $</th>
+          <th class="num" data-key="day">Day</th>
+          <th class="num" data-key="total">Total</th>
         </tr>
       </thead>
       <tbody id="portfolioBody"></tbody>

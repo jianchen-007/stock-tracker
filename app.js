@@ -6,8 +6,11 @@
     api: 'st_apiUrl',
     cache: 'st_cache',        // {holdings, quotes, fetchedAt}
     history: 'st_hist_',      // + SYMBOL_range -> {data, fetchedAt}
-    lastWrite: 'st_lastWriteback'
+    lastWrite: 'st_lastWriteback',
+    dispMode: 'st_dispMode',  // '%' | '$'
+    sortKey: 'st_sortKey'
   };
+  const LONG_TERM_S = 365 * 86400; // held ≥ 1 year
   const WRITEBACK_MIN_MS = 5 * 60 * 1000;
   const REFRESH_MS = 60 * 1000;
   const PORTFOLIO = '__PORTFOLIO__'; // pseudo-symbol for the combined chart
@@ -21,7 +24,12 @@
     live: false,    // last fetch succeeded
     devApi: false,  // same-origin dev-server.py API detected
     openGroups: new Set(),
-    sort: { key: 'value', dir: -1 },
+    // default: biggest movers of the day (by |day %|) on top
+    sort: {
+      key: localStorage.getItem(LS.sortKey) || 'mover',
+      dir: (localStorage.getItem(LS.sortKey) || 'mover') === 'symbol' ? 1 : -1
+    },
+    dispMode: localStorage.getItem(LS.dispMode) || '%',
     detailSymbol: null,
     detailRange: '1y',
     chart: null
@@ -231,6 +239,11 @@
     };
   }
 
+  const isLong = (lot) => {
+    const t = parseDate(lot.dateAcquired);
+    return t != null && (Date.now() / 1000 - t) >= LONG_TERM_S;
+  };
+
   function groups() {
     const map = new Map();
     state.holdings.forEach(function (r) {
@@ -243,6 +256,7 @@
       const q = state.quotes[symbol];
       const price = q && q.price != null ? q.price : null;
       const value = price != null ? price * qty : null;
+      const longCount = lots.filter(isLong).length;
       return {
         symbol, lots, qty, cost,
         avgCost: qty ? cost / qty : null,
@@ -250,13 +264,18 @@
         value,
         gain: value != null ? value - cost : null,
         gainPct: value != null && cost ? (value - cost) / cost * 100 : null,
-        dayGain: (q && price != null && q.prevClose != null) ? (price - q.prevClose) * qty : null
+        dayGain: (q && price != null && q.prevClose != null) ? (price - q.prevClose) * qty : null,
+        dayPct: (q && price != null && q.prevClose) ? (price - q.prevClose) / q.prevClose * 100 : null,
+        term: longCount === lots.length ? 'long' : longCount === 0 ? 'short' : 'mixed'
       };
     }).sort(function (a, b) {
       const { key, dir } = state.sort;
-      // with no live quotes, "value" falls back to cost so the order stays useful
-      const av = key === 'value' ? (a.value ?? a.cost) : a[key];
-      const bv = key === 'value' ? (b.value ?? b.cost) : b[key];
+      const sortVal = function (g) {
+        if (key === 'mover') return g.dayPct == null ? null : Math.abs(g.dayPct);
+        if (key === 'value') return g.value ?? g.cost; // useful order even with no quotes
+        return g[key];
+      };
+      const av = sortVal(a), bv = sortVal(b);
       if (av == null && bv == null) return 0;
       if (av == null) return 1;   // nulls last, either direction
       if (bv == null) return -1;
@@ -290,12 +309,29 @@
     const pc = $('portfolioCard');
     if (pc) pc.onclick = () => openDetail(PORTFOLIO);
 
-    // sort indicators
+    // header sort indicators (Day/Total map to %- or $-keys per display mode)
     document.querySelectorAll('#portfolioHead th').forEach(function (th) {
       if (!th.dataset.label) th.dataset.label = th.textContent;
       th.textContent = th.dataset.label +
-        (th.dataset.key === state.sort.key ? (state.sort.dir === -1 ? ' ▼' : ' ▲') : '');
+        (headerSortKey(th.dataset.key) === state.sort.key ? (state.sort.dir === -1 ? ' ▼' : ' ▲') : '');
     });
+    const sel = $('sortSel');
+    if (sel) sel.value = [...sel.options].some(o => o.value === state.sort.key) ? state.sort.key : 'mover';
+    $('modeToggle').textContent = state.dispMode === '%' ? 'Show $' : 'Show %';
+
+    const pct = state.dispMode === '%';
+    const dayCell = (dPct, dGain) => {
+      const v = pct ? dPct : dGain;
+      return '<td class="num ' + signCls(v) + '">' +
+        (v == null ? '—' : (pct ? pctTxt(v) : gainTxt(v))) + '</td>';
+    };
+    const totalCell = (gPct, gGain) => {
+      const v = pct ? gPct : gGain;
+      if (v == null) return '<td class="num">—</td>';
+      return pct
+        ? '<td class="num"><span class="pill ' + signCls(v) + '">' + pctTxt(v) + '</span></td>'
+        : '<td class="num ' + signCls(v) + '">' + gainTxt(v) + '</td>';
+    };
 
     // table
     const tb = $('portfolioBody');
@@ -303,17 +339,12 @@
     gs.forEach(function (g) {
       const open = state.openGroups.has(g.symbol);
       const tr = document.createElement('tr');
-      tr.className = 'group' + (open ? ' open' : '');
+      tr.className = 'group term-' + g.term + (open ? ' open' : '');
       tr.innerHTML =
         '<td class="sym"><span class="caret">▶</span>' + g.symbol +
         (g.lots.length > 1 ? ' <span class="dim">×' + g.lots.length + '</span>' : '') + '</td>' +
-        '<td class="num">' + fmt(g.qty, g.qty % 1 ? 2 : 0) + '</td>' +
-        '<td class="num">' + fmt(g.avgCost) + '</td>' +
-        '<td class="num">' + fmt(g.price) + '</td>' +
-        '<td class="num ' + signCls(g.dayGain) + '">' + (g.dayGain != null ? gainTxt(g.dayGain) : '—') + '</td>' +
-        '<td class="num ' + signCls(g.gain) + '">' + (g.gain != null ? gainTxt(g.gain) : '—') + '</td>' +
-        '<td class="num">' + (g.gainPct != null ? '<span class="pill ' + signCls(g.gainPct) + '">' + fmt(g.gainPct) + '%</span>' : '—') + '</td>' +
-        '<td class="num">' + fmt(g.value ?? null) + '</td>';
+        dayCell(g.dayPct, g.dayGain) +
+        totalCell(g.gainPct, g.gain);
       tr.addEventListener('click', function (ev) {
         // caret area toggles lots; anywhere else opens the chart
         if (ev.target.classList.contains('caret')) {
@@ -330,17 +361,14 @@
           const q = state.quotes[g.symbol];
           const value = q && q.price != null ? q.price * l.qty : null;
           const gain = value != null ? value - l.totalCost : null;
+          const lotDayGain = (q && q.price != null && q.prevClose != null) ? (q.price - q.prevClose) * l.qty : null;
           const ltr = document.createElement('tr');
-          ltr.className = 'lot';
+          ltr.className = 'lot term-' + (isLong(l) ? 'long' : 'short');
           ltr.innerHTML =
-            '<td class="sym">' + l.dateAcquired + (l.bank ? ' · ' + l.bank : '') + '</td>' +
-            '<td class="num">' + fmt(l.qty, l.qty % 1 ? 2 : 0) + '</td>' +
-            '<td class="num">' + fmt(l.pricePaid) + '</td>' +
-            '<td class="num"></td>' +
-            '<td class="num"></td>' +
-            '<td class="num ' + signCls(gain) + '">' + (gain != null ? gainTxt(gain) : '—') + '</td>' +
-            '<td class="num ' + signCls(gain) + '">' + (gain != null && l.totalCost ? fmt(gain / l.totalCost * 100) + '%' : '—') + '</td>' +
-            '<td class="num">' + fmt(value) + '</td>';
+            '<td class="sym">' + l.dateAcquired + (l.bank ? ' · ' + l.bank : '') +
+            ' · ' + fmt(l.qty, l.qty % 1 ? 2 : 0) + ' @ ' + fmt(l.pricePaid) + '</td>' +
+            dayCell(g.dayPct, lotDayGain) +
+            totalCell(gain != null && l.totalCost ? gain / l.totalCost * 100 : null, gain);
           tb.appendChild(ltr);
         });
       }
@@ -391,6 +419,20 @@
   }
 
   const gainTxt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v));
+  const pctTxt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v)) + '%';
+
+  // Day/Total column headers sort by the field currently displayed
+  function headerSortKey(k) {
+    if (k === 'day') return state.dispMode === '%' ? 'dayPct' : 'dayGain';
+    if (k === 'total') return state.dispMode === '%' ? 'gainPct' : 'gain';
+    return k;
+  }
+
+  function setSort(key, dir) {
+    state.sort = { key: key, dir: dir != null ? dir : (key === 'symbol' ? 1 : -1) };
+    localStorage.setItem(LS.sortKey, key);
+    render();
+  }
 
   /* ---------- symbol detail / chart ---------- */
 
@@ -606,10 +648,24 @@
     $('portfolioHead').addEventListener('click', function (e) {
       const th = e.target.closest('th');
       if (!th || !th.dataset.key) return;
-      if (state.sort.key === th.dataset.key) state.sort.dir = -state.sort.dir;
-      else state.sort = { key: th.dataset.key, dir: th.dataset.key === 'symbol' ? 1 : -1 };
-      render();
+      const key = headerSortKey(th.dataset.key);
+      if (state.sort.key === key) setSort(key, -state.sort.dir);
+      else setSort(key);
     });
+
+    $('sortSel').addEventListener('change', function () {
+      setSort(this.value);
+    });
+
+    $('modeToggle').onclick = function () {
+      state.dispMode = state.dispMode === '%' ? '$' : '%';
+      localStorage.setItem(LS.dispMode, state.dispMode);
+      // keep the sort on the same column when it tracks the display mode
+      const swap = { dayPct: 'dayGain', dayGain: 'dayPct', gainPct: 'gain', gain: 'gainPct' };
+      if (swap[state.sort.key]) state.sort.key = swap[state.sort.key];
+      localStorage.setItem(LS.sortKey, state.sort.key);
+      render();
+    };
 
     $('rangeBtns').addEventListener('click', function (e) {
       const btn = e.target.closest('button');
