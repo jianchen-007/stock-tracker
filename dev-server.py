@@ -31,9 +31,11 @@ def yahoo_symbol(s):
     return s.replace(".", "-")
 
 
-def get_holdings():
+def read_lots(path):
     rows = []
-    with open(os.path.join(ROOT, "holdings.csv"), newline="") as f:
+    if not os.path.exists(path):
+        return rows
+    with open(path, newline="") as f:
         for i, rec in enumerate(csv.DictReader(f)):
             if not rec.get("Symbol"):
                 continue
@@ -48,6 +50,12 @@ def get_holdings():
                 "totalCost": float(rec.get("Total Cost $") or 0) or qty * price_paid,
                 "bank": rec.get("Bank", ""),
             })
+    return rows
+
+
+def get_holdings():
+    rows = read_lots(os.path.join(ROOT, "holdings.csv"))
+    retirement = read_lots(os.path.join(ROOT, "retirement.csv"))
     rsu = []
     rsu_path = os.path.join(ROOT, "rsu.csv")
     if os.path.exists(rsu_path):
@@ -64,7 +72,7 @@ def get_holdings():
                     "unvested": float(rec["Unvested Qty"]),
                     "sellable": float(rec["Sellable Qty"]),
                 })
-    return {"rows": rows, "rsu": rsu}
+    return {"rows": rows, "rsu": rsu, "retirement": retirement}
 
 
 def get_quotes(symbols):

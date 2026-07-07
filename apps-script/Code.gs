@@ -21,6 +21,9 @@ const SHEET_NAME = ''; // '' = first sheet/tab
 // E Unvested Qty, F Sellable Qty; G-H written back by the app.
 const RSU_SHEET_NAME = 'RSU';
 const RSU_WRITEBACK_HEADER = ['Est. Market Value $', 'Last Updated'];
+// Optional Retirement tab: same layout as the main sheet (A–F holdings,
+// G–K app-written gains). Symbol "CASH" is treated as a constant $1.00.
+const RET_SHEET_NAME = 'Retirement';
 
 // Sheet columns: A Symbol, B Qty, C Price Paid $, D Date Acquired, E Total Cost $, F Bank
 // Columns written back by the app:
@@ -47,8 +50,10 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     if (body.action === 'writeGains') {
-      writeGains_(body.rows || [], body.rsuRows || [], body.updatedAt || new Date().toISOString());
-      return json_({ ok: true, written: (body.rows || []).length + (body.rsuRows || []).length });
+      writeGains_(body.rows || [], body.rsuRows || [], body.retRows || [],
+        body.updatedAt || new Date().toISOString());
+      return json_({ ok: true,
+        written: (body.rows || []).length + (body.rsuRows || []).length + (body.retRows || []).length });
     }
     throw new Error('Unknown action: ' + body.action);
   } catch (err) {
@@ -69,7 +74,16 @@ function sheet_() {
 }
 
 function getHoldings() {
-  const sh = sheet_();
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const retSh = ss.getSheetByName(RET_SHEET_NAME);
+  return {
+    rows: readLots_(sheet_()),
+    rsu: getRsu_(),
+    retirement: retSh ? readLots_(retSh) : []
+  };
+}
+
+function readLots_(sh) {
   const values = sh.getDataRange().getValues();
   const tz = Session.getScriptTimeZone();
   const rows = [];
@@ -88,7 +102,7 @@ function getHoldings() {
       bank: String(v[5] || '')
     });
   }
-  return { rows: rows, rsu: getRsu_() };
+  return rows;
 }
 
 function getRsu_() {
@@ -164,17 +178,24 @@ function getHistory(symbol, range) {
   };
 }
 
-function writeGains_(rows, rsuRows, updatedAt) {
-  const sh = sheet_();
+function writeLotGains_(sh, rows, updatedAt) {
+  sh.getRange(1, COL_LAST_PRICE, 1, WRITEBACK_HEADER.length).setValues([WRITEBACK_HEADER]);
+  rows.forEach(function (r) {
+    if (!r.row || r.row < 2) return;
+    sh.getRange(r.row, COL_LAST_PRICE, 1, 5)
+      .setValues([[r.lastPrice, r.value, r.gain, r.gainPct, updatedAt]]);
+  });
+}
+
+function writeGains_(rows, rsuRows, retRows, updatedAt) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    sh.getRange(1, COL_LAST_PRICE, 1, WRITEBACK_HEADER.length).setValues([WRITEBACK_HEADER]);
-    rows.forEach(function (r) {
-      if (!r.row || r.row < 2) return;
-      sh.getRange(r.row, COL_LAST_PRICE, 1, 5)
-        .setValues([[r.lastPrice, r.value, r.gain, r.gainPct, updatedAt]]);
-    });
+    writeLotGains_(sheet_(), rows, updatedAt);
+    if (retRows.length) {
+      const retSh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(RET_SHEET_NAME);
+      if (retSh) writeLotGains_(retSh, retRows, updatedAt);
+    }
     if (rsuRows.length) {
       const rsh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(RSU_SHEET_NAME);
       if (rsh) {
