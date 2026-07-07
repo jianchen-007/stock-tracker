@@ -26,79 +26,114 @@
 
 <div id="banner" class="banner hidden"></div>
 
+<nav class="tabs" id="tabBar">
+  <button data-tab="stocks" class="active">Stocks / ETFs</button>
+  <button data-tab="rsu">RSUs</button>
+  <button data-tab="ret">Retirement</button>
+</nav>
+
 <main>
-  <section class="table-wrap">
-    <div class="table-bar">
-      <label class="sort-label">Sort
-        <select id="sortSel">
-          <option value="mover">Biggest movers today</option>
-          <option value="dayPct">Day gain %</option>
-          <option value="dayGain">Day gain $</option>
-          <option value="gainPct">Total gain %</option>
-          <option value="gain">Total gain $</option>
-          <option value="value">Value</option>
-          <option value="symbol">Symbol A–Z</option>
-        </select>
-      </label>
-      <div class="term-legend">
-        <span><span class="term-dot long"></span>long-term &gt;1 yr</span>
-        <span><span class="term-dot short"></span>short-term</span>
+
+  <!-- ===== Stocks / ETFs (default tab) ===== -->
+  <div class="tabpane" id="pane-stocks">
+    <section class="table-wrap">
+      <div class="table-bar">
+        <strong class="rsu-title">Today's movers <span class="dim">±2%+</span></strong>
+        <div class="term-legend">
+          <span><span class="term-dot long"></span>long-term &gt;1 yr</span>
+          <span><span class="term-dot short"></span>short-term</span>
+        </div>
+        <button id="modeToggle" class="btn small" title="Toggle between % and $">Show $</button>
       </div>
-      <button id="modeToggle" class="btn small" title="Toggle between % and $">Show $</button>
-    </div>
-    <table id="portfolio">
-      <thead>
-        <tr id="portfolioHead">
-          <th class="sym" data-key="symbol">Symbol</th>
-          <th class="num" data-key="day">Day</th>
-          <th class="num" data-key="total">Total</th>
-          <th class="num" data-key="value">Value $</th>
-        </tr>
-      </thead>
-      <tbody id="portfolioBody"></tbody>
-    </table>
-  </section>
+      <table>
+        <thead>
+          <tr id="stocksHead">
+            <th class="sym" data-key="symbol">Symbol</th>
+            <th class="num" data-key="day">Day</th>
+            <th class="num" data-key="total">Total</th>
+            <th class="num" data-key="value">Value $</th>
+          </tr>
+        </thead>
+        <tbody id="moversStocksBody"></tbody>
+      </table>
+    </section>
 
-  <section class="table-wrap rsu-section" id="retSection" hidden>
-    <div class="table-bar">
-      <strong class="rsu-title">Retirement</strong>
-      <div class="rsu-numbers" id="retNumbers"></div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th class="sym">Symbol</th>
-          <th class="num">Day</th>
-          <th class="num">Total</th>
-          <th class="num">Value $</th>
-        </tr>
-      </thead>
-      <tbody id="retBody"></tbody>
-    </table>
-  </section>
+    <h2 class="section-title">Accounts</h2>
+    <div class="bank-list" id="bankListStocks"></div>
 
-  <section class="table-wrap rsu-section" id="rsuSection" hidden>
-    <div class="table-bar">
-      <strong id="rsuTitle" class="rsu-title">RSUs</strong>
-      <div class="rsu-numbers" id="rsuNumbers"></div>
-    </div>
-    <table id="rsuTable">
-      <thead>
-        <tr>
-          <th class="sym">Grant Date</th>
-          <th class="num">Granted</th>
-          <th class="num">Vested</th>
-          <th class="num">Unvested</th>
-          <th class="num">Sellable</th>
-          <th class="num">Value $</th>
-        </tr>
-      </thead>
-      <tbody id="rsuBody"></tbody>
-    </table>
-  </section>
+    <h2 class="section-title">Stocks / ETFs total</h2>
+    <section id="summaryStocks" class="summary-cards"></section>
+  </div>
 
-  <h2 class="section-title">Total Portfolio</h2>
-  <section id="summary" class="summary-cards"></section>
+  <!-- ===== RSUs ===== -->
+  <div class="tabpane" id="pane-rsu" hidden>
+    <section class="table-wrap">
+      <div class="table-bar">
+        <strong class="rsu-title">Today's movers <span class="dim">±2%+</span></strong>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="sym">Symbol</th>
+            <th class="num">Day</th>
+            <th class="num">Last Price $</th>
+            <th class="num">RSU Value $</th>
+          </tr>
+        </thead>
+        <tbody id="moversRsuBody"></tbody>
+      </table>
+    </section>
+
+    <section class="table-wrap rsu-section" id="rsuSection" hidden>
+      <div class="table-bar">
+        <strong id="rsuTitle" class="rsu-title">RSUs</strong>
+        <div class="rsu-numbers" id="rsuNumbers"></div>
+      </div>
+      <table id="rsuTable">
+        <thead>
+          <tr>
+            <th class="sym">Grant Date</th>
+            <th class="num">Granted</th>
+            <th class="num">Vested</th>
+            <th class="num">Unvested</th>
+            <th class="num">Sellable</th>
+            <th class="num">Value $</th>
+          </tr>
+        </thead>
+        <tbody id="rsuBody"></tbody>
+      </table>
+    </section>
+
+    <h2 class="section-title">RSU total</h2>
+    <section id="summaryRsu" class="summary-cards"></section>
+  </div>
+
+  <!-- ===== Retirement ===== -->
+  <div class="tabpane" id="pane-ret" hidden>
+    <section class="table-wrap">
+      <div class="table-bar">
+        <strong class="rsu-title">Today's movers <span class="dim">±2%+</span></strong>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="sym">Symbol</th>
+            <th class="num">Day</th>
+            <th class="num">Total</th>
+            <th class="num">Value $</th>
+          </tr>
+        </thead>
+        <tbody id="moversRetBody"></tbody>
+      </table>
+    </section>
+
+    <h2 class="section-title">Accounts</h2>
+    <div class="bank-list" id="bankListRet"></div>
+
+    <h2 class="section-title">Retirement total</h2>
+    <section id="summaryRet" class="summary-cards"></section>
+  </div>
+
 </main>
 
 <!-- Symbol detail overlay -->
@@ -144,7 +179,7 @@
     <p id="testResult" class="test-result"></p>
     <hr>
     <p class="hint">Quotes auto-refresh every 60&nbsp;s while the app is open. Computed gains are
-    written back to the Google Sheet (columns G–K) at most once every 5 minutes.</p>
+    written back to the Google Sheet at most once every 5 minutes.</p>
   </div>
 </div>
 

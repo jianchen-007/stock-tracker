@@ -94,7 +94,61 @@ body {
 }
 .banner a { color: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 
-main { max-width: 1080px; margin: 0 auto; padding: 16px; }
+main { max-width: 1080px; margin: 0 auto; padding: 12px 16px 24px; }
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  max-width: 1080px;
+  margin: 14px auto 0;
+  padding: 0 16px;
+}
+.tabs button {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bank-list { display: flex; flex-direction: column; gap: 10px; }
+.bank-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  flex-wrap: wrap;
+  user-select: none;
+}
+.bank-head:hover { background: var(--row-alt); }
+.bank-head .caret {
+  color: var(--muted);
+  display: inline-block;
+  width: 14px;
+  font-size: 12px;
+  transition: transform .15s;
+}
+.bank-head.open .caret { transform: rotate(90deg); }
+.bank-nums {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.bank-nums strong { font-weight: 650; }
+.bank-value { font-size: 15px; font-weight: 650; color: var(--ink); }
+.bank-card table { border-top: 1px solid var(--line); }
 
 .summary-cards {
   display: grid;

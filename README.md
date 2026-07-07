@@ -8,8 +8,10 @@ A dependency-free PWA that tracks a stock portfolio stored in a Google Sheet:
 - Works offline: app shell via service worker, data via localStorage cache.
 - Click a symbol row for a price-history chart with buy dates marked (▲); click the ▶ caret to expand individual lots.
 - Click the Total Value card for a combined portfolio-history chart (lots enter the curve on their buy dates, so contributions show as step-ups).
-- Simple home table (Symbol / Day / Total) sorted by biggest daily movers by default; sort dropdown + clickable headers; "Show $ / Show %" toggle.
-- Row stripes mark long-term (blue, held >1 yr) vs short-term (amber) positions; mixed-lot symbols get a split stripe.
+- Three tabs: **Stocks/ETFs** (default), **RSUs**, **Retirement**. Each shows "Today's movers" (positions beyond ±2% on the day), the rest grouped into collapsible per-account cards, with the tab's totals at the bottom.
+- Clickable movers-table headers to sort; "Show $ / Show %" toggle.
+- Row stripes mark long-term (blue, held >1 yr) vs short-term (amber) positions; mixed-lot symbols get a split stripe; unknown dates get no stripe.
+- Symbol `CASH` is treated as a constant $1.00 for money-market/sweep balances.
 - Allocation donut, dark mode (follows the system setting).
 
 **Sheet:** https://docs.google.com/spreadsheets/d/16yETcWNiY4UNBlhTakLnM2T5663rLWviRHQNYEl8ezk

@@ -8,7 +8,8 @@
     history: 'st_hist_',      // + SYMBOL_range -> {data, fetchedAt}
     lastWrite: 'st_lastWriteback',
     dispMode: 'st_dispMode',  // '%' | '$'
-    sortKey: 'st_sortKey'
+    sortKey: 'st_sortKey',
+    tab: 'st_tab'             // 'stocks' | 'rsu' | 'ret'
   };
   const LONG_TERM_S = 365 * 86400; // held ≥ 1 year
   const WRITEBACK_MIN_MS = 5 * 60 * 1000;
@@ -26,6 +27,8 @@
     live: false,    // last fetch succeeded
     devApi: false,  // same-origin dev-server.py API detected
     openGroups: new Set(),
+    openBanks: new Set(),
+    activeTab: localStorage.getItem('st_tab') || 'stocks',
     // default: biggest movers of the day (by |day %|) on top
     sort: {
       key: localStorage.getItem(LS.sortKey) || 'mover',
@@ -333,66 +336,64 @@
     return t;
   }
 
+  const MOVER_PCT = 2; // |day %| threshold for the movers lists
+
+  function sumGroups(gs) {
+    const t = { cost: 0, value: 0, day: 0, anyValue: false, anyDay: false };
+    gs.forEach(function (g) {
+      t.cost += g.cost;
+      if (g.value != null) { t.value += g.value; t.anyValue = true; }
+      else t.value += g.cost; // fall back to cost so the total is still meaningful
+      if (g.dayGain != null) { t.day += g.dayGain; t.anyDay = true; }
+    });
+    return t;
+  }
+
   function render() {
     hideBanner();
-    const gs = groups();
-    const retGs = groups(state.retirement);
-    renderRsu();
-
-    // summary cards (bottom of page): stocks + retirement + sellable RSU shares
-    const rsuT = rsuTotals();
-    const tot = { cost: 0, value: 0, day: 0, anyValue: false, anyDay: false };
-    gs.concat(retGs).forEach(function (g) {
-      tot.cost += g.cost;
-      if (g.value != null) { tot.value += g.value; tot.anyValue = true; }
-      else tot.value += g.cost; // fall back to cost so the total is still meaningful
-      if (g.dayGain != null) { tot.day += g.dayGain; tot.anyDay = true; }
+    document.querySelectorAll('#tabBar button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.tab === state.activeTab);
     });
-    const totGain = tot.anyValue ? tot.value - tot.cost : null;
-    const hasRsu = state.rsu.length > 0;
-    const grandValue = tot.value + rsuT.current;
-    const grandDay = tot.day + rsuT.day;
-    $('summary').innerHTML = [
-      card('Total Value', '$' + fmt(tot.anyValue || rsuT.anyValue ? grandValue : null), '',
-        (hasRsu ? 'incl. sellable RSUs · ' : '') + 'view history →', 'portfolioCard'),
-      card("Day's Gain", tot.anyDay || rsuT.anyValue ? gainTxt(grandDay) : '—',
-        signCls(grandDay)),
-      card('Total Gain', totGain != null ? gainTxt(totGain) : '—', totGain != null ? signCls(totGain) : '',
-        (totGain != null && tot.cost ? fmt(totGain / tot.cost * 100) + '%' : '') + (hasRsu ? ' · excl. RSUs' : '')),
-      card('Cost Basis', '$' + fmt(tot.cost), '', hasRsu ? 'excl. RSUs' : ''),
-      hasRsu ? card('RSU Potential', rsuT.anyValue ? '$' + fmt(rsuT.potential) : '—', '',
-        fmt(rsuT.unvested, 0) + ' unvested shares') : '',
-      allocationCard(gs.concat(retGs), tot.value)
-    ].join('');
-    const pc = $('portfolioCard');
-    if (pc) pc.onclick = () => openDetail(PORTFOLIO);
+    $('pane-stocks').hidden = state.activeTab !== 'stocks';
+    $('pane-rsu').hidden = state.activeTab !== 'rsu';
+    $('pane-ret').hidden = state.activeTab !== 'ret';
+    $('modeToggle').textContent = state.dispMode === '%' ? 'Show $' : 'Show %';
 
-    // header sort indicators (Day/Total map to %- or $-keys per display mode)
-    document.querySelectorAll('#portfolioHead th').forEach(function (th) {
+    // header sort indicators on the stocks movers table
+    document.querySelectorAll('#stocksHead th').forEach(function (th) {
       if (!th.dataset.label) th.dataset.label = th.textContent;
       th.textContent = th.dataset.label +
         (headerSortKey(th.dataset.key) === state.sort.key ? (state.sort.dir === -1 ? ' ▼' : ' ▲') : '');
     });
-    const sel = $('sortSel');
-    if (sel) sel.value = [...sel.options].some(o => o.value === state.sort.key) ? state.sort.key : 'mover';
-    $('modeToggle').textContent = state.dispMode === '%' ? 'Show $' : 'Show %';
 
+    renderStocksTab();
+    renderRsuTab();
+    renderRetTab();
+
+    setStatus(state.live
+      ? (state.devApi && !apiUrl() ? 'Dev · ' : 'Live · ') + fmtTime(state.fetchedAt)
+      : (state.fetchedAt ? 'Cached · ' + fmtTime(state.fetchedAt) : 'Not connected'));
+  }
+
+  // ---- cell builders (respect the $/% display mode) ----
+  function dayCell(dPct, dGain) {
     const pct = state.dispMode === '%';
-    const dayCell = (dPct, dGain) => {
-      const v = pct ? dPct : dGain;
-      return '<td class="num ' + signCls(v) + '">' +
-        (v == null ? '—' : (pct ? pctTxt(v) : gainTxt(v))) + '</td>';
-    };
-    const totalCell = (gPct, gGain) => {
-      const v = pct ? gPct : gGain;
-      if (v == null) return '<td class="num">—</td>';
-      return pct
-        ? '<td class="num"><span class="pill ' + signCls(v) + '">' + pctTxt(v) + '</span></td>'
-        : '<td class="num ' + signCls(v) + '">' + gainTxt(v) + '</td>';
-    };
+    const v = pct ? dPct : dGain;
+    return '<td class="num ' + signCls(v) + '">' +
+      (v == null ? '—' : (pct ? pctTxt(v) : gainTxt(v))) + '</td>';
+  }
 
-    // shared row builder for the stocks and retirement tables
-    function renderTable(list, tb, opts) {
+  function totalCell(gPct, gGain) {
+    const pct = state.dispMode === '%';
+    const v = pct ? gPct : gGain;
+    if (v == null) return '<td class="num">—</td>';
+    return pct
+      ? '<td class="num"><span class="pill ' + signCls(v) + '">' + pctTxt(v) + '</span></td>'
+      : '<td class="num ' + signCls(v) + '">' + gainTxt(v) + '</td>';
+  }
+
+  // shared row builder for symbol-group tables
+  function renderTable(list, tb, opts) {
       tb.innerHTML = '';
       list.forEach(function (g) {
         const openKey = opts.keyPrefix + g.symbol;
@@ -437,27 +438,138 @@
       });
     }
 
-    renderTable(gs, $('portfolioBody'), { stripes: true, keyPrefix: '' });
+  function renderMovers(gs, tb, opts) {
+    const movers = gs.filter(g => g.dayPct != null && Math.abs(g.dayPct) >= MOVER_PCT);
+    if (!movers.length) {
+      tb.innerHTML = '<tr><td class="sym dim" colspan="4">No movers beyond ±' + MOVER_PCT + '% today.</td></tr>';
+      return;
+    }
+    renderTable(movers, tb, opts);
+  }
 
-    // retirement section
-    const retSec = $('retSection');
-    if (state.retirement.length) {
-      retSec.hidden = false;
-      renderTable(retGs, $('retBody'), { stripes: false, keyPrefix: 'ret:' });
-      const rv = retGs.reduce((s, g) => s + (g.value ?? g.cost), 0);
-      const rc = retGs.reduce((s, g) => s + g.cost, 0);
-      const rd = retGs.reduce((s, g) => s + (g.dayGain || 0), 0);
-      $('retNumbers').innerHTML =
-        '<span>Value <strong>$' + fmt(rv) + '</strong></span>' +
-        '<span>Gain <strong class="' + signCls(rv - rc) + '">' + gainTxt(rv - rc) + '</strong></span>' +
-        '<span>Day <strong class="' + signCls(rd) + '">' + gainTxt(rd) + '</strong></span>';
+  // Collapsible per-account cards; click a bank to see its positions.
+  function renderBankCards(lots, container, opts) {
+    const byBank = new Map();
+    lots.forEach(function (l) {
+      const b = l.bank || 'Other';
+      if (!byBank.has(b)) byBank.set(b, []);
+      byBank.get(b).push(l);
+    });
+    container.innerHTML = '';
+    [...byBank.entries()]
+      .map(function ([bank, blots]) {
+        const gs = groups(blots);
+        return { bank: bank, gs: gs, t: sumGroups(gs) };
+      })
+      .sort((a, b) => b.t.value - a.t.value)
+      .forEach(function (o) {
+        const openKey = opts.keyPrefix + ':' + o.bank;
+        const open = state.openBanks.has(openKey);
+        const sec = document.createElement('section');
+        sec.className = 'table-wrap bank-card';
+        const head = document.createElement('div');
+        head.className = 'bank-head' + (open ? ' open' : '');
+        const gain = o.t.anyValue ? o.t.value - o.t.cost : null;
+        head.innerHTML =
+          '<span class="caret">▶</span><strong>' + o.bank + '</strong>' +
+          '<span class="dim">' + o.gs.length + ' position' + (o.gs.length > 1 ? 's' : '') + '</span>' +
+          '<span class="bank-nums">' +
+          '<span>Day <strong class="' + signCls(o.t.day) + '">' + (o.t.anyDay ? gainTxt(o.t.day) : '—') + '</strong></span>' +
+          '<span>Gain <strong class="' + signCls(gain) + '">' + (gain != null ? gainTxt(gain) : '—') + '</strong></span>' +
+          '<span class="bank-value">$' + fmt(o.t.anyValue ? o.t.value : null) + '</span></span>';
+        head.addEventListener('click', function () {
+          state.openBanks.has(openKey) ? state.openBanks.delete(openKey) : state.openBanks.add(openKey);
+          render();
+        });
+        sec.appendChild(head);
+        if (open) {
+          const table = document.createElement('table');
+          table.innerHTML =
+            '<thead><tr><th class="sym">Symbol</th><th class="num">Day</th>' +
+            '<th class="num">Total</th><th class="num">Value $</th></tr></thead><tbody></tbody>';
+          sec.appendChild(table);
+          renderTable(o.gs, table.querySelector('tbody'), { stripes: opts.stripes, keyPrefix: openKey + ':' });
+        }
+        container.appendChild(sec);
+      });
+  }
+
+  function renderStocksTab() {
+    const gs = groups(state.holdings);
+    renderMovers(gs, $('moversStocksBody'), { stripes: true, keyPrefix: 'mv' });
+    renderBankCards(state.holdings, $('bankListStocks'), { stripes: true, keyPrefix: 'bk' });
+
+    const tot = sumGroups(gs);
+    const retGs = groups(state.retirement);
+    const retTot = sumGroups(retGs);
+    const rsuT = rsuTotals();
+    const totGain = tot.anyValue ? tot.value - tot.cost : null;
+    const grand = tot.value + retTot.value + rsuT.current;
+    $('summaryStocks').innerHTML = [
+      card('Stocks Value', '$' + fmt(tot.anyValue ? tot.value : null)),
+      card("Day's Gain", tot.anyDay ? gainTxt(tot.day) : '—', signCls(tot.day)),
+      card('Total Gain', totGain != null ? gainTxt(totGain) : '—', totGain != null ? signCls(totGain) : '',
+        totGain != null && tot.cost ? pctTxt(totGain / tot.cost * 100) : ''),
+      card('Cost Basis', '$' + fmt(tot.cost)),
+      card('All Accounts', '$' + fmt(tot.anyValue || retTot.anyValue || rsuT.anyValue ? grand : null), '',
+        'incl. retirement & sellable RSUs · view history →', 'portfolioCard'),
+      allocationCard(gs.concat(retGs), tot.value)
+    ].join('');
+    const pc = $('portfolioCard');
+    if (pc) pc.onclick = () => openDetail(PORTFOLIO);
+  }
+
+  function renderRsuTab() {
+    const tb = $('moversRsuBody');
+    tb.innerHTML = '';
+    const syms = [...new Set(state.rsu.map(r => r.symbol))];
+    const movers = syms.map(function (s) {
+      const q = state.quotes[s] || {};
+      const dayPct = (q.price != null && q.prevClose) ? (q.price - q.prevClose) / q.prevClose * 100 : null;
+      const val = state.rsu.filter(r => r.symbol === s)
+        .reduce((sum, r) => sum + (q.price != null ? (r.sellable + r.unvested) * q.price : 0), 0);
+      return { s: s, price: q.price, dayPct: dayPct, val: val };
+    }).filter(m => m.dayPct != null && Math.abs(m.dayPct) >= MOVER_PCT)
+      .sort((a, b) => Math.abs(b.dayPct) - Math.abs(a.dayPct));
+    if (!movers.length) {
+      tb.innerHTML = '<tr><td class="sym dim" colspan="4">No movers beyond ±' + MOVER_PCT + '% today.</td></tr>';
     } else {
-      retSec.hidden = true;
+      movers.forEach(function (m) {
+        const tr = document.createElement('tr');
+        tr.className = 'group';
+        tr.innerHTML = '<td class="sym">' + m.s + '</td>' +
+          '<td class="num ' + signCls(m.dayPct) + '">' + pctTxt(m.dayPct) + '</td>' +
+          '<td class="num">' + fmt(m.price) + '</td>' +
+          '<td class="num">' + fmt(m.val) + '</td>';
+        tr.addEventListener('click', () => openDetail(m.s));
+        tb.appendChild(tr);
+      });
     }
 
-    setStatus(state.live
-      ? (state.devApi && !apiUrl() ? 'Dev · ' : 'Live · ') + fmtTime(state.fetchedAt)
-      : (state.fetchedAt ? 'Cached · ' + fmtTime(state.fetchedAt) : 'Not connected'));
+    renderRsu(); // the grants table section
+
+    const t = rsuTotals();
+    $('summaryRsu').innerHTML = state.rsu.length ? [
+      card('Current Value', t.anyValue ? '$' + fmt(t.current) : '—', '', fmt(t.sellable, 0) + ' sellable shares'),
+      card("Day's Gain", t.anyValue ? gainTxt(t.day) : '—', signCls(t.day), 'sellable shares'),
+      card('Potential', t.anyValue ? '$' + fmt(t.potential) : '—', '', fmt(t.unvested, 0) + ' unvested shares'),
+      card('Est. Total', t.anyValue ? '$' + fmt(t.current + t.potential) : '—', '', 'current + potential')
+    ].join('') : '<p class="hint">No RSU grants — add them to the sheet\'s RSU tab.</p>';
+  }
+
+  function renderRetTab() {
+    const gs = groups(state.retirement);
+    renderMovers(gs, $('moversRetBody'), { stripes: false, keyPrefix: 'rmv' });
+    renderBankCards(state.retirement, $('bankListRet'), { stripes: false, keyPrefix: 'rbk' });
+    const t = sumGroups(gs);
+    const gain = t.anyValue ? t.value - t.cost : null;
+    $('summaryRet').innerHTML = state.retirement.length ? [
+      card('Retirement Value', '$' + fmt(t.anyValue ? t.value : null)),
+      card("Day's Gain", t.anyDay ? gainTxt(t.day) : '—', signCls(t.day)),
+      card('Total Gain', gain != null ? gainTxt(gain) : '—', signCls(gain),
+        gain != null && t.cost ? pctTxt(gain / t.cost * 100) : ''),
+      card('Cost Basis', '$' + fmt(t.cost))
+    ].join('') : '<p class="hint">No retirement holdings — add them to the sheet\'s Retirement tab.</p>';
   }
 
   function card(label, big, cls, sub, id) {
@@ -854,16 +966,20 @@
       }
     };
 
-    $('portfolioHead').addEventListener('click', function (e) {
+    $('tabBar').addEventListener('click', function (e) {
+      const b = e.target.closest('button');
+      if (!b || !b.dataset.tab) return;
+      state.activeTab = b.dataset.tab;
+      localStorage.setItem(LS.tab, state.activeTab);
+      render();
+    });
+
+    $('stocksHead').addEventListener('click', function (e) {
       const th = e.target.closest('th');
       if (!th || !th.dataset.key) return;
       const key = headerSortKey(th.dataset.key);
       if (state.sort.key === key) setSort(key, -state.sort.dir);
       else setSort(key);
-    });
-
-    $('sortSel').addEventListener('change', function () {
-      setSort(this.value);
     });
 
     $('modeToggle').onclick = function () {
