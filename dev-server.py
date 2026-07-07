@@ -48,7 +48,23 @@ def get_holdings():
                 "totalCost": float(rec.get("Total Cost $") or 0) or qty * price_paid,
                 "bank": rec.get("Bank", ""),
             })
-    return {"rows": rows}
+    rsu = []
+    rsu_path = os.path.join(ROOT, "rsu.csv")
+    if os.path.exists(rsu_path):
+        with open(rsu_path, newline="") as f:
+            for i, rec in enumerate(csv.DictReader(f)):
+                if not rec.get("Symbol"):
+                    continue
+                rsu.append({
+                    "row": i + 2,
+                    "grantDate": rec["Grant Date"],
+                    "symbol": rec["Symbol"].strip().upper(),
+                    "granted": float(rec["Granted Qty"]),
+                    "vested": float(rec["Vested Qty"]),
+                    "unvested": float(rec["Unvested Qty"]),
+                    "sellable": float(rec["Sellable Qty"]),
+                })
+    return {"rows": rows, "rsu": rsu}
 
 
 def get_quotes(symbols):

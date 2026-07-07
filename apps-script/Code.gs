@@ -17,6 +17,10 @@
 
 const SHEET_ID = '16yETcWNiY4UNBlhTakLnM2T5663rLWviRHQNYEl8ezk';
 const SHEET_NAME = ''; // '' = first sheet/tab
+// Optional RSU tab: A Grant Date, B Symbol, C Granted Qty, D Vested Qty,
+// E Unvested Qty, F Sellable Qty; G-H written back by the app.
+const RSU_SHEET_NAME = 'RSU';
+const RSU_WRITEBACK_HEADER = ['Est. Market Value $', 'Last Updated'];
 
 // Sheet columns: A Symbol, B Qty, C Price Paid $, D Date Acquired, E Total Cost $, F Bank
 // Columns written back by the app:
@@ -43,8 +47,8 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     if (body.action === 'writeGains') {
-      writeGains_(body.rows || [], body.updatedAt || new Date().toISOString());
-      return json_({ ok: true, written: (body.rows || []).length });
+      writeGains_(body.rows || [], body.rsuRows || [], body.updatedAt || new Date().toISOString());
+      return json_({ ok: true, written: (body.rows || []).length + (body.rsuRows || []).length });
     }
     throw new Error('Unknown action: ' + body.action);
   } catch (err) {
@@ -84,7 +88,30 @@ function getHoldings() {
       bank: String(v[5] || '')
     });
   }
-  return { rows: rows };
+  return { rows: rows, rsu: getRsu_() };
+}
+
+function getRsu_() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(RSU_SHEET_NAME);
+  if (!sh) return [];
+  const values = sh.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const rows = [];
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    if (!v[0] || !v[1]) continue;
+    rows.push({
+      row: i + 1,
+      grantDate: v[0] instanceof Date ? Utilities.formatDate(v[0], tz, 'MM/dd/yyyy') : String(v[0]),
+      symbol: String(v[1]).trim().toUpperCase(),
+      granted: Number(v[2]) || 0,
+      vested: Number(v[3]) || 0,
+      unvested: Number(v[4]) || 0,
+      sellable: Number(v[5]) || 0
+    });
+  }
+  return rows;
 }
 
 // Yahoo uses '-' where brokers use '.' (BRK.B -> BRK-B)
@@ -137,7 +164,7 @@ function getHistory(symbol, range) {
   };
 }
 
-function writeGains_(rows, updatedAt) {
+function writeGains_(rows, rsuRows, updatedAt) {
   const sh = sheet_();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -148,6 +175,16 @@ function writeGains_(rows, updatedAt) {
       sh.getRange(r.row, COL_LAST_PRICE, 1, 5)
         .setValues([[r.lastPrice, r.value, r.gain, r.gainPct, updatedAt]]);
     });
+    if (rsuRows.length) {
+      const rsh = SpreadsheetApp.openById(SHEET_ID).getSheetByName(RSU_SHEET_NAME);
+      if (rsh) {
+        rsh.getRange(1, 7, 1, RSU_WRITEBACK_HEADER.length).setValues([RSU_WRITEBACK_HEADER]);
+        rsuRows.forEach(function (r) {
+          if (!r.row || r.row < 2) return;
+          rsh.getRange(r.row, 7, 1, 2).setValues([[r.estValue, updatedAt]]);
+        });
+      }
+    }
   } finally {
     lock.releaseLock();
   }

@@ -19,6 +19,7 @@
 
   const state = {
     holdings: [],   // lots from the sheet
+    rsu: [],        // RSU grants from the sheet's RSU tab
     quotes: {},     // symbol -> {price, prevClose, ...}
     fetchedAt: null,
     live: false,    // last fetch succeeded
@@ -122,6 +123,7 @@
       const c = JSON.parse(localStorage.getItem(LS.cache));
       if (c && c.holdings) {
         state.holdings = c.holdings;
+        state.rsu = c.rsu || [];
         state.quotes = c.quotes || {};
         state.fetchedAt = c.fetchedAt;
       }
@@ -130,7 +132,7 @@
 
   function saveCache() {
     localStorage.setItem(LS.cache, JSON.stringify({
-      holdings: state.holdings, quotes: state.quotes, fetchedAt: state.fetchedAt
+      holdings: state.holdings, rsu: state.rsu, quotes: state.quotes, fetchedAt: state.fetchedAt
     }));
   }
 
@@ -153,7 +155,9 @@
     try {
       const h = await api({ action: 'holdings' });
       state.holdings = h.rows;
-      const symbols = [...new Set(state.holdings.map(r => r.symbol))];
+      state.rsu = h.rsu || [];
+      const symbols = [...new Set(
+        state.holdings.map(r => r.symbol).concat(state.rsu.map(r => r.symbol)))];
       state.quotes = await api({ action: 'quotes', symbols: symbols.join(',') });
       state.fetchedAt = Date.now();
       state.live = true;
@@ -195,9 +199,14 @@
         gainPct: +(gain / r.totalCost * 100).toFixed(2)
       };
     }).filter(Boolean);
-    if (!rows.length) return;
+    const rsuRows = state.rsu.map(function (r) {
+      const q = state.quotes[r.symbol];
+      if (!q || q.price == null) return null;
+      return { row: r.row, estValue: +((r.sellable + r.unvested) * q.price).toFixed(2) };
+    }).filter(Boolean);
+    if (!rows.length && !rsuRows.length) return;
     try {
-      await apiPost({ action: 'writeGains', rows: rows, updatedAt: new Date().toLocaleString('en-US') });
+      await apiPost({ action: 'writeGains', rows: rows, rsuRows: rsuRows, updatedAt: new Date().toLocaleString('en-US') });
       localStorage.setItem(LS.lastWrite, String(Date.now()));
     } catch (err) {
       console.warn('write-back failed:', err);
@@ -285,11 +294,32 @@
     });
   }
 
+  // RSU aggregates. Value convention matches the broker: a grant's market
+  // value is (sellable + unvested) × price; vested-but-not-sellable shares
+  // were sold/withheld and are gone. "Current" = sellable only.
+  function rsuTotals() {
+    const t = { current: 0, potential: 0, day: 0, sellable: 0, unvested: 0, anyValue: false };
+    state.rsu.forEach(function (r) {
+      const q = state.quotes[r.symbol];
+      t.sellable += r.sellable;
+      t.unvested += r.unvested;
+      if (q && q.price != null) {
+        t.anyValue = true;
+        t.current += r.sellable * q.price;
+        t.potential += r.unvested * q.price;
+        if (q.prevClose != null) t.day += r.sellable * (q.price - q.prevClose);
+      }
+    });
+    return t;
+  }
+
   function render() {
     hideBanner();
     const gs = groups();
+    renderRsu();
 
-    // summary cards
+    // summary cards (bottom of page): stocks + sellable RSU shares
+    const rsuT = rsuTotals();
     const tot = { cost: 0, value: 0, day: 0, anyValue: false, anyDay: false };
     gs.forEach(function (g) {
       tot.cost += g.cost;
@@ -298,12 +328,19 @@
       if (g.dayGain != null) { tot.day += g.dayGain; tot.anyDay = true; }
     });
     const totGain = tot.anyValue ? tot.value - tot.cost : null;
+    const hasRsu = state.rsu.length > 0;
+    const grandValue = tot.value + rsuT.current;
+    const grandDay = tot.day + rsuT.day;
     $('summary').innerHTML = [
-      card('Total Value', '$' + fmt(tot.anyValue ? tot.value : null), '', 'view history →', 'portfolioCard'),
-      card("Day's Gain", tot.anyDay ? gainTxt(tot.day) : '—', tot.anyDay ? signCls(tot.day) : ''),
+      card('Total Value', '$' + fmt(tot.anyValue || rsuT.anyValue ? grandValue : null), '',
+        (hasRsu ? 'stocks + sellable RSUs · ' : '') + 'view history →', 'portfolioCard'),
+      card("Day's Gain", tot.anyDay || rsuT.anyValue ? gainTxt(grandDay) : '—',
+        signCls(grandDay)),
       card('Total Gain', totGain != null ? gainTxt(totGain) : '—', totGain != null ? signCls(totGain) : '',
-        totGain != null && tot.cost ? fmt(totGain / tot.cost * 100) + '%' : ''),
-      card('Cost Basis', '$' + fmt(tot.cost)),
+        (totGain != null && tot.cost ? fmt(totGain / tot.cost * 100) + '%' : '') + (hasRsu ? ' · stocks only' : '')),
+      card('Cost Basis', '$' + fmt(tot.cost), '', hasRsu ? 'stocks' : ''),
+      hasRsu ? card('RSU Potential', rsuT.anyValue ? '$' + fmt(rsuT.potential) : '—', '',
+        fmt(rsuT.unvested, 0) + ' unvested shares') : '',
       allocationCard(gs, tot.value)
     ].join('');
     const pc = $('portfolioCard');
@@ -392,11 +429,17 @@
     '#a855f7', '#eab308', '#10b981', '#f97316', '#3b82f6', '#94a3b8'];
 
   function allocationCard(gs, totalValue) {
-    const total = gs.reduce((s, g) => s + (g.value ?? g.cost), 0);
+    // stocks by symbol + RSU sellable value as its own slice
+    const items = gs.map(g => ({ symbol: g.symbol, v: g.value ?? g.cost }));
+    const rsuBySym = {};
+    state.rsu.forEach(function (r) {
+      const q = state.quotes[r.symbol];
+      if (q && q.price != null) rsuBySym[r.symbol] = (rsuBySym[r.symbol] || 0) + r.sellable * q.price;
+    });
+    Object.keys(rsuBySym).forEach(s => items.push({ symbol: s + ' RSU', v: rsuBySym[s] }));
+    const total = items.reduce((s, it) => s + it.v, 0);
     if (!total) return '';
-    const shares = gs
-      .map((g, i) => ({ symbol: g.symbol, v: g.value ?? g.cost }))
-      .sort((a, b) => b.v - a.v);
+    const shares = items.sort((a, b) => b.v - a.v);
     // donut segments via stroke-dasharray on circles
     const R = 15.9155; // circumference ≈ 100 for easy percentages
     let offset = 25;   // start at 12 o'clock
@@ -422,6 +465,57 @@
 
   const gainTxt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v));
   const pctTxt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v)) + '%';
+
+  function renderRsu() {
+    const sec = $('rsuSection');
+    if (!state.rsu.length) { sec.hidden = true; return; }
+    sec.hidden = false;
+
+    const syms = [...new Set(state.rsu.map(r => r.symbol))];
+    const q0 = syms.length === 1 ? state.quotes[syms[0]] : null;
+    $('rsuTitle').innerHTML = 'RSUs — ' + syms.join(', ') +
+      (q0 && q0.price != null
+        ? ' <span class="dim">$' + fmt(q0.price) + '</span>' +
+          (q0.prevClose ? ' <span class="' + signCls(q0.price - q0.prevClose) + '">' +
+            pctTxt((q0.price - q0.prevClose) / q0.prevClose * 100) + '</span>' : '')
+        : '');
+    const t = rsuTotals();
+    $('rsuNumbers').innerHTML =
+      '<span>Current <strong>' + (t.anyValue ? '$' + fmt(t.current) : '—') + '</strong></span>' +
+      '<span>Potential <strong>' + (t.anyValue ? '$' + fmt(t.potential) : '—') + '</strong></span>';
+
+    const tb = $('rsuBody');
+    tb.innerHTML = '';
+    const sums = { granted: 0, vested: 0, unvested: 0, sellable: 0, value: 0, anyV: false };
+    state.rsu.forEach(function (r) {
+      const q = state.quotes[r.symbol];
+      const value = q && q.price != null ? (r.sellable + r.unvested) * q.price : null;
+      sums.granted += r.granted; sums.vested += r.vested;
+      sums.unvested += r.unvested; sums.sellable += r.sellable;
+      if (value != null) { sums.value += value; sums.anyV = true; }
+      const tr = document.createElement('tr');
+      tr.className = 'rsu-row';
+      tr.innerHTML =
+        '<td class="sym">' + r.grantDate + (syms.length > 1 ? ' · ' + r.symbol : '') + '</td>' +
+        '<td class="num">' + fmt(r.granted, 0) + '</td>' +
+        '<td class="num">' + fmt(r.vested, 0) + '</td>' +
+        '<td class="num">' + fmt(r.unvested, 0) + '</td>' +
+        '<td class="num">' + fmt(r.sellable, 0) + '</td>' +
+        '<td class="num">' + fmt(value) + '</td>';
+      tr.addEventListener('click', () => openDetail(r.symbol));
+      tb.appendChild(tr);
+    });
+    const trTot = document.createElement('tr');
+    trTot.className = 'rsu-total';
+    trTot.innerHTML =
+      '<td class="sym">Totals</td>' +
+      '<td class="num">' + fmt(sums.granted, 0) + '</td>' +
+      '<td class="num">' + fmt(sums.vested, 0) + '</td>' +
+      '<td class="num">' + fmt(sums.unvested, 0) + '</td>' +
+      '<td class="num">' + fmt(sums.sellable, 0) + '</td>' +
+      '<td class="num">' + (sums.anyV ? fmt(sums.value) : '—') + '</td>';
+    tb.appendChild(trTot);
+  }
 
   // Day/Total column headers sort by the field currently displayed
   function headerSortKey(k) {
@@ -467,6 +561,25 @@
         stat('Total Gain', gain != null ? gainTxt(gain) : '—', signCls(gain),
           gain != null && cost ? pctTxt(gain / cost * 100) : '') +
         stat('Positions', gs.length, '', state.holdings.length + ' lots');
+    } else if (!groups().some(x => x.symbol === symbol) && state.rsu.some(r => r.symbol === symbol)) {
+      // RSU-only symbol
+      const grants = state.rsu.filter(r => r.symbol === symbol);
+      const q = state.quotes[symbol] || {};
+      const sellable = grants.reduce((s, r) => s + r.sellable, 0);
+      const unvested = grants.reduce((s, r) => s + r.unvested, 0);
+      const dayPct = (q.price != null && q.prevClose) ? (q.price - q.prevClose) / q.prevClose * 100 : null;
+      items =
+        stat('Last Price', q.price != null ? '$' + fmt(q.price) : '—',
+          signCls(dayPct), dayPct != null ? pctTxt(dayPct) + ' today' : '') +
+        stat('Prev Close', q.prevClose != null ? '$' + fmt(q.prevClose) : '—') +
+        stat('Sellable', fmt(sellable, 0)) +
+        stat('Unvested', fmt(unvested, 0)) +
+        stat('Current Value', q.price != null ? '$' + fmt(sellable * q.price) : '—') +
+        stat('Potential', q.price != null ? '$' + fmt(unvested * q.price) : '—') +
+        stat("Day's Gain", (q.price != null && q.prevClose != null)
+          ? gainTxt(sellable * (q.price - q.prevClose)) : '—',
+          signCls(dayPct), 'sellable shares') +
+        stat('Grants', grants.length);
     } else {
       const g = groups().find(x => x.symbol === symbol);
       if (!g) { $('detailStats').innerHTML = ''; return; }
@@ -573,7 +686,7 @@
     msg.classList.add('hidden');
 
     const lots = symbol === PORTFOLIO ? state.holdings : state.holdings.filter(r => r.symbol === symbol);
-    const markers = lots.map(function (r) {
+    let markers = lots.map(function (r) {
       return {
         t: parseDate(r.dateAcquired),
         // on the portfolio chart the marker sits on the curve (price: null)
@@ -582,6 +695,16 @@
           ' @ $' + fmt(r.pricePaid) + ' (' + r.dateAcquired + ')'
       };
     }).filter(m => m.t);
+    // RSU-only symbol: mark grant dates instead of buys
+    if (symbol !== PORTFOLIO && !markers.length) {
+      markers = state.rsu.filter(r => r.symbol === symbol).map(function (r) {
+        return {
+          t: parseDate(r.grantDate),
+          price: null,
+          label: 'Granted ' + fmt(r.granted, 0) + ' (' + r.grantDate + ')'
+        };
+      }).filter(m => m.t);
+    }
 
     state.chart.setData({ timestamps: hist.timestamps, closes: hist.closes, markers: markers });
 
@@ -605,6 +728,7 @@
     const lots = all
       ? [...state.holdings].sort((a, b) => (parseDate(a.dateAcquired) || 0) - (parseDate(b.dateAcquired) || 0))
       : state.holdings.filter(r => r.symbol === symbol);
+    if (!lots.length) { $('detailLots').innerHTML = ''; return; } // e.g. RSU-only symbol
     const rows = lots.map(function (l) {
       const q = state.quotes[l.symbol];
       const value = q && q.price != null ? q.price * l.qty : null;

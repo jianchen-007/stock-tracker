@@ -152,6 +152,24 @@ main { max-width: 1080px; margin: 0 auto; padding: 16px; }
 .term-dot.long { background: var(--term-long); }
 .term-dot.short { background: var(--term-short); }
 
+/* RSU section */
+.rsu-section { margin-top: 16px; }
+.rsu-title { font-size: 14.5px; }
+.rsu-title .dim { color: var(--muted); font-weight: 400; }
+.rsu-numbers { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-left: auto; }
+.rsu-numbers strong { color: var(--ink); font-weight: 650; }
+tr.rsu-row { cursor: pointer; }
+tr.rsu-row:hover { background: var(--row-alt); }
+tr.rsu-total td { font-weight: 650; border-top: 2px solid var(--line); }
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  margin: 20px 2px 8px;
+}
+
 /* long/short-term holding stripes on the left edge of each row */
 tr.term-long td:first-child { border-left: 3px solid var(--term-long); }
 tr.term-short td:first-child { border-left: 3px solid var(--term-short); }

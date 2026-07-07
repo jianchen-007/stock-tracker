@@ -27,8 +27,6 @@
 <div id="banner" class="banner hidden"></div>
 
 <main>
-  <section id="summary" class="summary-cards"></section>
-
   <section class="table-wrap">
     <div class="table-bar">
       <label class="sort-label">Sort
@@ -60,6 +58,29 @@
       <tbody id="portfolioBody"></tbody>
     </table>
   </section>
+
+  <section class="table-wrap rsu-section" id="rsuSection" hidden>
+    <div class="table-bar">
+      <strong id="rsuTitle" class="rsu-title">RSUs</strong>
+      <div class="rsu-numbers" id="rsuNumbers"></div>
+    </div>
+    <table id="rsuTable">
+      <thead>
+        <tr>
+          <th class="sym">Grant Date</th>
+          <th class="num">Granted</th>
+          <th class="num">Vested</th>
+          <th class="num">Unvested</th>
+          <th class="num">Sellable</th>
+          <th class="num">Value $</th>
+        </tr>
+      </thead>
+      <tbody id="rsuBody"></tbody>
+    </table>
+  </section>
+
+  <h2 class="section-title">Total Portfolio</h2>
+  <section id="summary" class="summary-cards"></section>
 </main>
 
 <!-- Symbol detail overlay -->
