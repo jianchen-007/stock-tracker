@@ -248,9 +248,11 @@
     };
   }
 
+  // true = long-term, false = short-term, null = acquisition date unknown
   const isLong = (lot) => {
     const t = parseDate(lot.dateAcquired);
-    return t != null && (Date.now() / 1000 - t) >= LONG_TERM_S;
+    if (t == null) return null;
+    return (Date.now() / 1000 - t) >= LONG_TERM_S;
   };
 
   function groups() {
@@ -265,7 +267,8 @@
       const q = state.quotes[symbol];
       const price = q && q.price != null ? q.price : null;
       const value = price != null ? price * qty : null;
-      const longCount = lots.filter(isLong).length;
+      const terms = lots.map(isLong).filter(t => t !== null);
+      const longCount = terms.filter(Boolean).length;
       return {
         symbol, lots, qty, cost,
         avgCost: qty ? cost / qty : null,
@@ -275,7 +278,8 @@
         gainPct: value != null && cost ? (value - cost) / cost * 100 : null,
         dayGain: (q && price != null && q.prevClose != null) ? (price - q.prevClose) * qty : null,
         dayPct: (q && price != null && q.prevClose) ? (price - q.prevClose) / q.prevClose * 100 : null,
-        term: longCount === lots.length ? 'long' : longCount === 0 ? 'short' : 'mixed'
+        term: !terms.length ? 'na'
+          : longCount === terms.length ? 'long' : longCount === 0 ? 'short' : 'mixed'
       };
     }).sort(function (a, b) {
       const { key, dir } = state.sort;
@@ -400,8 +404,9 @@
           const value = q && q.price != null ? q.price * l.qty : null;
           const gain = value != null ? value - l.totalCost : null;
           const lotDayGain = (q && q.price != null && q.prevClose != null) ? (q.price - q.prevClose) * l.qty : null;
+          const lt = isLong(l);
           const ltr = document.createElement('tr');
-          ltr.className = 'lot term-' + (isLong(l) ? 'long' : 'short');
+          ltr.className = 'lot' + (lt === null ? '' : lt ? ' term-long' : ' term-short');
           ltr.innerHTML =
             '<td class="sym">' + l.dateAcquired + (l.bank ? ' · ' + l.bank : '') +
             ' · ' + fmt(l.qty, l.qty % 1 ? 2 : 0) + ' @ ' + fmt(l.pricePaid) + '</td>' +
@@ -584,7 +589,7 @@
       const g = groups().find(x => x.symbol === symbol);
       if (!g) { $('detailStats').innerHTML = ''; return; }
       const q = state.quotes[symbol] || {};
-      const termTxt = { long: 'Long-term', short: 'Short-term', mixed: 'Mixed lots' }[g.term];
+      const termTxt = { long: 'Long-term', short: 'Short-term', mixed: 'Mixed lots', na: 'Unknown' }[g.term];
       items =
         stat('Last Price', g.price != null ? '$' + fmt(g.price) : '—',
           signCls(g.dayPct), g.dayPct != null ? pctTxt(g.dayPct) + ' today' : '') +
@@ -597,7 +602,8 @@
           g.dayPct != null ? pctTxt(g.dayPct) : '') +
         stat('Total Gain', g.gain != null ? gainTxt(g.gain) : '—', signCls(g.gain),
           g.gainPct != null ? pctTxt(g.gainPct) : '') +
-        stat('Held', '<span class="term-dot ' + (g.term === 'short' ? 'short' : 'long') + '"></span>' + termTxt,
+        stat('Held', (g.term === 'na' ? '' :
+          '<span class="term-dot ' + (g.term === 'short' ? 'short' : 'long') + '"></span>') + termTxt,
           '', g.lots.length > 1 ? g.lots.length + ' lots' : '');
     }
     $('detailStats').innerHTML = items;
